@@ -14,7 +14,8 @@ import torch.nn.functional as F
 import torchaudio
 from torch.utils.data import DataLoader
 
-from g2p_en import G2p
+from g2p_zh_en.g2p_zh_en import G2P
+#from g2p_en import G2p
 
 import logging
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class MelDataset(torch.utils.data.Dataset):
         self.to_melspec = torchaudio.transforms.MelSpectrogram(**MEL_PARAMS)
         self.mean, self.std = -4, 4
         
-        self.g2p = G2p()
+        self.g2p = G2P()
 
     def __len__(self):
         return len(self.data_list)
@@ -82,7 +83,11 @@ class MelDataset(torch.utils.data.Dataset):
         wave, sr = sf.read(wave_path)
 
         # phonemize the text
-        ps = self.g2p(text.replace('-', ' '))
+        #ps = self.g2p(text.replace('-', ' '))
+
+        ps = self.g2p.g2p(text=text, language="zh-cn")
+        #ps = " ".join(phs).strip()
+
         if "'" in ps:
             ps.remove("'")
         text = self.text_cleaner(ps)
