@@ -1,7 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm
 from g2p_zh_en.g2p_zh_en import G2P
-#from pypinyin import pinyin, lazy_pinyin, Style
+from pypinyin import pinyin, lazy_pinyin, Style
 #from pinyin_to_ipa import pinyin_to_ipa
 #from phonemizer import phonemize
 
@@ -51,7 +51,7 @@ with open(o_file,"w") as of:
     symbol_list = sorted(list(symbol))
     
     
-    i = 4
+    i = 5
     for s in symbol_list:
         ofs = f"\"{s}\",{i}\n"
         print(ofs)

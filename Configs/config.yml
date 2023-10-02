@@ -2,9 +2,10 @@ log_dir: "Checkpoint"
 save_freq: 10
 device: "cuda"
 epochs: 200
-batch_size: 64
+batch_size: 32
 pretrained_model: ""
 train_data: "Data/train_list_aishell.txt"
+  #val_data: "Data/val_list.txt"
 val_data: "Data/val_list_aishell.txt"
 
 preprocess_parasm:
