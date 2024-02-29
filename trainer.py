@@ -18,6 +18,8 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 from utils import *
 
 class Trainer(object):
@@ -33,12 +35,13 @@ class Trainer(object):
          train_dataloader=None,
          val_dataloader=None,
          initial_steps=0,
+         n_down=1,
          log_dir=None,
          initial_epochs=0):
 
         self.steps = initial_steps
         self.epochs = initial_epochs
-        self.model = model.to(gpu_id)
+        self.og_model = model.to(gpu_id)
         self.model = DDP(model, device_ids=[gpu_id])
         self.criterion = criterion
         self.optimizer = optimizer
@@ -52,6 +55,8 @@ class Trainer(object):
         self.logger = logger
         self.save_freq = save_freq
         self.fp16_run = False
+
+        print("TRAINER WITH ", self.gpu_id)
 
     def save_checkpoint(self, checkpoint_path):
         """Save checkpoint.
@@ -159,33 +164,28 @@ class Trainer(object):
 
     def train(self, max_epochs: int):
         for epoch in range(max_epochs):
-            train_results = self._train_epoch()
-            eval_results = self._eval_epoch()
+            train_results = self._train_epoch(epoch)
+            eval_results = self._eval_epoch(epoch)
             results = train_results.copy()
             results.update(eval_results)
+
             logger.info('--- epoch %d ---' % epoch)
 
             if (epoch % self.save_freq) == 0:
-                self.save_checkpoint(osp.join(self.log_dir, 'epoch_%05d.pth' % epoch))
-
-
-        for epoch in range(max_epochs):
-            self._run_epoch(epoch)
-            if self.gpu_id == 0 and epoch % self.save_every == 0:
-                self._save_checkpoint(epoch)
+                self.save_checkpoint(osp.join(self.log_dir, 'epoch_%05d.pth' % epoch))  
 
     def run(self, batch):
         self.optimizer.zero_grad()
         batch = [b.to(self.gpu_id) for b in batch]
         text_input, text_input_length, mel_input, mel_input_length = batch
-        mel_input_length = mel_input_length // (2 ** self.model.n_down)
-        future_mask = self.model.get_future_mask(
-            mel_input.size(2)//(2**self.model.n_down), unmask_future_steps=0).to(self.gpu_id)
-        mel_mask = self.model.length_to_mask(mel_input_length)
-        text_mask = self.model.length_to_mask(text_input_length)
+        mel_input_length = mel_input_length // (2 ** self.og_model.n_down)
+        future_mask = self.og_model.get_future_mask(
+            mel_input.size(2)//(2**self.og_model.n_down), unmask_future_steps=0).to(self.gpu_id)
+        mel_mask = self.og_model.length_to_mask(mel_input_length)
+        text_mask = self.og_model.length_to_mask(text_input_length)
         ppgs, s2s_pred, s2s_attn = self.model(
             mel_input, src_key_padding_mask=mel_mask, text_input=text_input)
-        
+
         loss_ctc = self.criterion['ctc'](ppgs.log_softmax(dim=2).transpose(0, 1),
                                       text_input, mel_input_length, text_input_length)
 
@@ -207,7 +207,7 @@ class Trainer(object):
         train_losses = defaultdict(list)
         self.model.train()
         self.train_dataloader.sampler.set_epoch(epoch)
-        for train_steps_per_epoch, batch in enumerate(tqdm(self.train_dataloader, desc="[train]"), 1):
+        for train_steps_per_epoch, batch in enumerate(tqdm(self.train_dataloader, desc="[train]", disable=self.gpu_id == 0), 1):
             losses = self.run(batch)
             for key, value in losses.items():
                 train_losses["train/%s" % key].append(value)
@@ -222,14 +222,14 @@ class Trainer(object):
         self.model.eval()
         eval_losses = defaultdict(list)
         eval_images = defaultdict(list)
-        for eval_steps_per_epoch, batch in enumerate(tqdm(self.val_dataloader, desc="[eval]"), 1):
+        for eval_steps_per_epoch, batch in enumerate(tqdm(self.val_dataloader, desc="[eval]", disable=self.gpu_id == 0), 1):
             batch = [b.to(self.gpu_id) for b in batch]
             text_input, text_input_length, mel_input, mel_input_length = batch
-            mel_input_length = mel_input_length // (2 ** self.model.n_down)
-            future_mask = self.model.get_future_mask(
-                mel_input.size(2)//(2**self.model.n_down), unmask_future_steps=0).to(self.gpu_id)
-            mel_mask = self.model.length_to_mask(mel_input_length)
-            text_mask = self.model.length_to_mask(text_input_length)
+            mel_input_length = mel_input_length // (2 ** self.og_model.n_down)
+            future_mask = self.og_model.get_future_mask(
+                mel_input.size(2)//(2**self.og_model.n_down), unmask_future_steps=0).to(self.gpu_id)
+            mel_mask = self.og_model.length_to_mask(mel_input_length)
+            text_mask = self.og_model.length_to_mask(text_input_length)
             ppgs, s2s_pred, s2s_attn = self.model(
                 mel_input, src_key_padding_mask=mel_mask, text_input=text_input)
             loss_ctc = self.criterion['ctc'](ppgs.log_softmax(dim=2).transpose(0, 1),

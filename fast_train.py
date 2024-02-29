@@ -1,3 +1,5 @@
+import shutil
+
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -11,7 +13,12 @@ import os
 import yaml
 from torch.utils.tensorboard import SummaryWriter
 
+from meldataset import build_dataloader
+from optimizers import build_optimizer
+from utils import *
+from models import build_model
 from trainer import Trainer
+
 
 def ddp_setup(rank, world_size):
     """
@@ -52,19 +59,29 @@ def main(rank: int, world_size: int, config):
     train_dataloader = build_dataloader(train_list,
                                         batch_size=batch_size,
                                         num_workers=8,
+                                        root_path=config.get('root_path', {}),
                                         dataset_config=config.get('dataset_params', {}))
 
     val_dataloader = build_dataloader(val_list,
                                       batch_size=batch_size,
                                       validation=True,
                                       num_workers=2,
+                                      root_path=config.get('root_path', {}),
                                       dataset_config=config.get('dataset_params', {}))
 
     model = build_model(model_params=config['model_params'] or {})
 
+    blank_index = train_dataloader.dataset.text_cleaner.word_index_dictionary[" "] # get blank index
     criterion = build_criterion(critic_params={
         'ctc': {'blank': blank_index},
     })
+
+    scheduler_params = {
+        "max_lr": float(config['optimizer_params'].get('lr', 5e-4)),
+        "pct_start": float(config['optimizer_params'].get('pct_start', 0.0)),
+        "epochs": epochs,
+        "steps_per_epoch": len(train_dataloader),
+    }
 
     optimizer, scheduler = build_optimizer(
         {"params": model.parameters(), "optimizer_params":{}, "scheduler_params": scheduler_params})
@@ -80,6 +97,7 @@ def main(rank: int, world_size: int, config):
       optimizer=optimizer,
       scheduler=scheduler,
       save_freq = save_freq,
+      gpu_id=rank,
       train_dataloader=train_dataloader,
       val_dataloader=val_dataloader,
       log_dir=config.get('log_dir', '/'),

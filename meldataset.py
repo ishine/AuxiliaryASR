@@ -15,15 +15,12 @@ import torchaudio
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from g2p_en import G2p
-
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 from text_utils import TextCleaner
 np.random.seed(1)
 random.seed(1)
-DEFAULT_DICT_PATH = osp.join(osp.dirname(__file__), 'word_index_dict.txt')
 SPECT_PARAMS = {
     "n_fft": 2048,
     "win_length": 1200,
@@ -39,8 +36,8 @@ MEL_PARAMS = {
 class MelDataset(torch.utils.data.Dataset):
     def __init__(self,
                  data_list,
-                 dict_path=DEFAULT_DICT_PATH,
-                 sr=24000
+                 sr=24000,
+                 root_path="/"
                 ):
 
         spect_params = SPECT_PARAMS
@@ -48,13 +45,12 @@ class MelDataset(torch.utils.data.Dataset):
 
         _data_list = [l[:-1].split('|') for l in data_list]
         self.data_list = [data if len(data) == 3 else (*data, 0) for data in _data_list]
-        self.text_cleaner = TextCleaner(dict_path)
+        self.text_cleaner = TextCleaner()
         self.sr = sr
+        self.root_path = root_path
 
         self.to_melspec = torchaudio.transforms.MelSpectrogram(**MEL_PARAMS)
         self.mean, self.std = -4, 4
-        
-        self.g2p = G2p()
 
     def __len__(self):
         return len(self.data_list)
@@ -80,12 +76,10 @@ class MelDataset(torch.utils.data.Dataset):
     def _load_tensor(self, data):
         wave_path, text, speaker_id = data
         speaker_id = int(speaker_id)
-        wave, sr = sf.read(wave_path)
+        wave, sr = sf.read(os.path.join(self.root_path, wave_path))
 
-        # phonemize the text
-        ps = self.g2p(text.replace('-', ' '))
-        if "'" in ps:
-            ps.remove("'")
+        ps = [i for j in text.split() for i in (j, ' ')][:-1]
+
         text = self.text_cleaner(ps)
         blank_index = self.text_cleaner.word_index_dictionary[" "]
         text.insert(0, blank_index) # add a blank at the beginning (silence)
@@ -147,10 +141,11 @@ def build_dataloader(path_list,
                      validation=False,
                      batch_size=4,
                      num_workers=1,
+                     root_path="/",
                      collate_config={},
                      dataset_config={}):
 
-    dataset = MelDataset(path_list, **dataset_config)
+    dataset = MelDataset(path_list, **dataset_config, root_path=root_path)
     collate_fn = Collater(**collate_config)
     data_loader = DataLoader(dataset,
                              batch_size=batch_size,
