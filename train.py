@@ -23,6 +23,17 @@ handler = StreamHandler()
 handler.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
+def ddp_setup(rank, world_size):
+    """
+    Args:
+        rank: Unique identifier of each process
+        world_size: Total number of processes
+    """
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+
 torch.backends.cudnn.benchmark = True
 
 @click.command()
@@ -52,14 +63,12 @@ def main(config_path):
     train_dataloader = build_dataloader(train_list,
                                         batch_size=batch_size,
                                         num_workers=8,
-                                        dataset_config=config.get('dataset_params', {}),
-                                        device=device)
+                                        dataset_config=config.get('dataset_params', {}))
 
     val_dataloader = build_dataloader(val_list,
                                       batch_size=batch_size,
                                       validation=True,
                                       num_workers=2,
-                                      device=device,
                                       dataset_config=config.get('dataset_params', {}))
 
     model = build_model(model_params=config['model_params'] or {})

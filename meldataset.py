@@ -13,6 +13,7 @@ from torch import nn
 import torch.nn.functional as F
 import torchaudio
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from g2p_en import G2p
 
@@ -146,7 +147,6 @@ def build_dataloader(path_list,
                      validation=False,
                      batch_size=4,
                      num_workers=1,
-                     device='cpu',
                      collate_config={},
                      dataset_config={}):
 
@@ -154,10 +154,11 @@ def build_dataloader(path_list,
     collate_fn = Collater(**collate_config)
     data_loader = DataLoader(dataset,
                              batch_size=batch_size,
-                             shuffle=(not validation),
+                             shuffle=False,
+                             sampler=DistributedSampler(dataset),
                              num_workers=num_workers,
                              drop_last=(not validation),
                              collate_fn=collate_fn,
-                             pin_memory=(device != 'cpu'))
+                             pin_memory=True)
 
     return data_loader
