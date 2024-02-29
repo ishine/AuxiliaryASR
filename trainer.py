@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from torch import nn
 from PIL import Image
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from utils import calc_wer
@@ -35,7 +36,6 @@ class Trainer(object):
          train_dataloader=None,
          val_dataloader=None,
          initial_steps=0,
-         n_down=1,
          log_dir=None,
          initial_epochs=0):
 
@@ -56,7 +56,8 @@ class Trainer(object):
         self.save_freq = save_freq
         self.fp16_run = False
 
-        print("TRAINER WITH ", self.gpu_id)
+        if self.gpu_id == 0:
+            self.writer = SummaryWriter(log_dir + "/tensorboard")
 
     def save_checkpoint(self, checkpoint_path):
         """Save checkpoint.
@@ -169,10 +170,20 @@ class Trainer(object):
             results = train_results.copy()
             results.update(eval_results)
 
-            logger.info('--- epoch %d ---' % epoch)
+            if self.gpu_id == 0:
+                print(results)
 
-            if (epoch % self.save_freq) == 0:
-                self.save_checkpoint(osp.join(self.log_dir, 'epoch_%05d.pth' % epoch))  
+                logger.info('--- epoch %d ---' % epoch)
+                for key, value in results.items():
+                    if isinstance(value, float):
+                        logger.info('%-15s: %.4f' % (key, value))
+                        self.writer.add_scalar(key, value, epoch)
+                    else:
+                        for v in value:
+                            self.writer.add_figure('eval_attn', plot_image(v), epoch)
+
+                if (epoch % self.save_freq) == 0:
+                    self.save_checkpoint(osp.join(self.log_dir, 'epoch_%05d.pth' % epoch))
 
     def run(self, batch):
         self.optimizer.zero_grad()

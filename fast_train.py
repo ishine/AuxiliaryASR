@@ -120,8 +120,6 @@ if __name__ == "__main__":
     if not osp.exists(log_dir): os.mkdir(log_dir)
     shutil.copy(config_path, osp.join(log_dir, osp.basename(config_path)))
 
-    writer = SummaryWriter(log_dir + "/tensorboard")
-
     # write logs
     '''file_handler = logging.FileHandler(osp.join(log_dir, 'train.log'))
     file_handler.setLevel(logging.DEBUG)

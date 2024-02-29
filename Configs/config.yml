@@ -2,7 +2,7 @@ log_dir: "Checkpoint/"
 save_freq: 10
 device: "cuda"
 epochs: 200
-batch_size: 64
+batch_size: 100
 pretrained_model: ""
 train_data: "../StyleTTS2/PreProcess/train_list_neutral.txt"
 val_data: "../StyleTTS2/PreProcess/val_list_neutral.txt"
