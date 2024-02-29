@@ -1,6 +1,9 @@
 # AuxiliaryASR
 This repo contains the training code for Phoneme-level ASR for Voice Conversion (VC) and TTS (Text-Mel Alignment) used in [StarGANv2-VC](https://github.com/yl4579/StarGANv2-VC) and [StyleTTS](https://github.com/yl4579/StyleTTS). 
 
+## Fork Info
+This is a fork that attempts to implement distributed training for multi-gpu setups.
+
 ## Pre-requisites
 1. Python >= 3.7
 2. Clone this repository:
