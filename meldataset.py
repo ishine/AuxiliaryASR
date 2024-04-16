@@ -13,8 +13,11 @@ from torch import nn
 import torch.nn.functional as F
 import torchaudio
 from torch.utils.data import DataLoader
+import librosa
 
-from g2p_en import G2p
+from g2p_zh_en.g2p_zh_en import G2P
+#from g2p_en import G2p
+#from pypinyin import pinyin, lazy_pinyin, Style
 
 import logging
 logger = logging.getLogger(__name__)
@@ -53,7 +56,7 @@ class MelDataset(torch.utils.data.Dataset):
         self.to_melspec = torchaudio.transforms.MelSpectrogram(**MEL_PARAMS)
         self.mean, self.std = -4, 4
         
-        self.g2p = G2p()
+        self.g2p = G2P()
 
     def __len__(self):
         return len(self.data_list)
@@ -80,16 +83,34 @@ class MelDataset(torch.utils.data.Dataset):
         wave_path, text, speaker_id = data
         speaker_id = int(speaker_id)
         wave, sr = sf.read(wave_path)
+        
+        if sr != 24000:
+             wave = librosa.resample(wave, orig_sr=sr, target_sr=24000)
+             wave, index = librosa.effects.trim(wave, top_db=30)
+
 
         # phonemize the text
-        ps = self.g2p(text.replace('-', ' '))
-        if "'" in ps:
-            ps.remove("'")
-        text = self.text_cleaner(ps)
+        #ps = self.g2p(text.replace('-', ' '))
+
+        ps = self.g2p.g2p(text=text, language="zh-cn")
+
+        psb = []
+        for p in ps:
+            psb.append(p)
+            if p[-1] in ['1','2','3','4','5']:
+                psb.append(" ")
+
+        #ps = " ".join(phs).strip()
+        #ps = lazy_pinyin(text, style=Style.TONE3, neutral_tone_with_five=True)
+        if "'" in psb:
+            psb.remove("'")
+        text = self.text_cleaner(psb)
+        #print(text)
         blank_index = self.text_cleaner.word_index_dictionary[" "]
         text.insert(0, blank_index) # add a blank at the beginning (silence)
-        text.append(blank_index) # add a blank at the end (silence)
-        
+#        text.append(blank_index) # add a blank at the end (silence)
+       
+        #print(text)
         text = torch.LongTensor(text)
 
         return wave, text, speaker_id
@@ -137,6 +158,7 @@ class Collater(object):
         if self.return_wave:
             waves = [b[0] for b in batch]
             return texts, input_lengths, mels, output_lengths, paths, waves
+
 
         return texts, input_lengths, mels, output_lengths
 
